@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This repository contains research and tooling for implementing burst mode control on Bitmain APW12 power supplies to improve efficiency at low loads. The APW12 operates at only 30-40% efficiency below 2000W (vs 95% at full load), and burst mode control could theoretically improve this to 80-85%.
+This repository contains comprehensive technical documentation and reverse engineering analysis of the Bitmain APW12 3600W power supply. The project includes firmware analysis tools, hardware documentation, and experimental modifications for efficiency improvements.
 
 ## Project Structure
 
@@ -129,18 +129,21 @@ Memory Layout (Bank 0 common RAM):
 
 ## Critical Information
 
-### APW12 Technical Details (From Official Documentation)
+### APW12 Technical Details
 - **Power rating**: 3600W (max 240A @ 15V, 300A @ 12V)
-- **Primary DC bus**: 410-420V (measured at TEST20-TEST30)
-- **Dual controller architecture**:
-  - U12 (PIC16F1704): I2C communication and voltage regulation
-  - U22: Main PWM controller for LLC resonant converter
+- **Primary DC bus**: 410-420V (measured between TEST20 and TEST30)
+- **Key ICs**:
+  - U12 (PIC16F1704): System control, I2C communication, voltage regulation
+  - U22 (FAN7688): LLC resonant converter with automatic PFM/PWM switching
+  - NCP1654: Power factor correction controller
 - **Communication interfaces**:
-  - J15: I2C port (SDA/SCL/EN pins) for voltage adjustment (12-15V range)
-  - J16: PIC programming port for firmware updates
+  - J15: I2C port (SDA/SCL/EN/GND) for voltage adjustment (12-15V range)
+  - J16: ICSP programming port (VPP/VDD/GND/ICSPDAT/ICSPCLK) for firmware updates
 - **Key test points**:
-  - TEST18-TEST19: PIC power (3.2-3.3V verification)
-  - TEST20-TEST30: DC bus voltage monitoring
+  - TEST18: PIC power positive (3.3V)
+  - TEST19: PIC power ground reference
+  - TEST20: Primary DC bus positive (~410-420V DC)
+  - TEST30: Primary DC bus negative/ground
   - TEST15/TEST11: 12V auxiliary supply verification
 - **PWM system**: 
   - Timer2/PR2: Controls PWM frequency
@@ -159,10 +162,13 @@ Memory Layout (Bank 0 common RAM):
 - EMI compliance issues with modified firmware
 - Output ripple may increase from 1% to 5%
 
-### Alternative Approaches (Recommended First)
-1. Deploy smart PDUs for load aggregation
-2. Test aftermarket firmware (LuxOS/Braiins) - $50-100 per miner
-3. Replace with variable-load optimized PSUs (~$200 each)
+### Hardware Architecture Notes
+
+**Control Limitations**: The PIC16F1704 has limited control over efficiency:
+- Can only adjust output voltage via DAC (RC2/Pin 8)
+- Cannot directly control LLC switching frequencies
+- FAN7688 autonomously handles efficiency optimization
+- Efficiency improvements primarily depend on hardware health, not firmware
 
 ## Development Workflow
 
@@ -248,13 +254,16 @@ sudo apt-get install gputils  # Debian/Ubuntu
 brew install gputils          # macOS
 ```
 
-## Expected Efficiency Improvements
+## Efficiency Characteristics
 
-| Load Range | Current | Burst Mode | Improvement |
-|------------|---------|------------|-------------|
-| 10% (360W) | 30-40%  | 80-85%     | +45%        |
-| 25% (900W) | 65-70%  | 85-88%     | +18%        |
-| 50% (1800W)| 88-90%  | 90-92%     | +2%         |
-| 100% (3600W)| 94-95% | 94-95%     | 0%          |
+Field testing reveals variable efficiency performance:
 
-Annual savings potential: $426,000 for 3000-unit facility
+| Load Level | Reported Efficiency Range | Notes |
+|------------|--------------------------|-------|
+| 10% (360W) | 30-85% | Wide variation between units |
+| 25% (900W) | 65-88% | Depends on PFC circuit health |
+| 50% (1800W) | 88-92% | More consistent across units |
+| 75% (2700W) | 92-94% | Near optimal efficiency |
+| 100% (3600W) | 94-95% | Peak efficiency |
+
+Note: Some users report near-nameplate efficiency even at ~1200W loads, suggesting the FAN7688's automatic light-load optimization may work correctly in healthy units.
