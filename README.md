@@ -75,13 +75,13 @@ python3 pic_decompiler_analysis.py
   - Pin 2 (RA5): RA5 input
   - Pin 3 (RA4): RA4 input
   - Pin 4 (VPP/MCLR/RA3): Programming/Reset
-  - Pin 5 (RC5): PWM output to PFC controller
+  - Pin 5 (RC5): PWM output to NCP1654 PFC controller via optoisolator (FB1/FB2 nets)
   - Pin 6 (RC4): RC4 I/O
   - Pin 7 (RC3): RC3 I/O
-  - Pin 8 (RC2): DAC output to FAN7688 FB pin
+  - Pin 8 (RC2): DAC output ("DA" net) to FAN7688 feedback pin for voltage control
   - Pin 9 (RC1/SDA): I2C Data
   - Pin 10 (RC0/SCL): I2C Clock
-  - Pin 11 (RA2): V-OUT voltage sense
+  - Pin 11 (RA2): Analog input for V-OUT voltage sensing
   - Pin 12 (ICSPCLK): Programming clock
   - Pin 13 (ICSPDAT): Programming data
   - Pin 14 (GND): Ground
@@ -117,22 +117,27 @@ The APW12 employs a sophisticated multi-controller architecture:
    - Primary power conversion control
    - Handles all DC-DC switching on primary and secondary sides
    - Provides tight output voltage regulation at high current
-   - Automatically switches between PFM and PWM modes for light load efficiency
+   - **Automatically switches between PFM and PWM modes for light load efficiency**
    - Manages short circuit protection autonomously
    - Controlled via feedback pin (FB) by PIC DAC output
+   - **Note**: The FAN7688's automatic optimization means firmware modifications have limited impact on efficiency
 
 2. **PIC16F1704 Microcontroller** (U12):
 
    - System supervisor and communication interface
    - I2C slave device address: 0x58 (typical)
+   - **Limited control capabilities**:
+     - Can only adjust output voltage via DAC (no direct switching control)
+     - Cannot modify LLC switching frequencies or duty cycles
+     - Efficiency improvements primarily depend on hardware health
    - Functions:
-     - Output voltage regulation (12-15V range)
+     - Output voltage regulation (12-15V range) via DAC to FAN7688
      - I2C command processing from miner control board
-     - PFC feedback control via PWM
+     - PFC feedback control via PWM to NCP1654
      - System monitoring and protection
    - Control signals:
-     - DAC output (RC2/Pin 8) → FAN7688 FB pin
-     - PWM output (RC5/Pin 5) → NCP1654 via optoisolator
+     - DAC output (RC2/Pin 8) → FAN7688 FB pin ("DA" net)
+     - PWM output (RC5/Pin 5) → NCP1654 via optoisolator (FB1/FB2 nets)
      - ADC input (RA2/Pin 11) ← V-OUT sensing
 
 3. **NCP1654 Power Factor Controller**:
@@ -140,6 +145,7 @@ The APW12 employs a sophisticated multi-controller architecture:
    - Maintains power factor >0.99
    - Input current shaping for reduced harmonics
    - Receives feedback from PIC via isolated PWM signal
+   - **PFC circuit health significantly impacts low-load efficiency**
 
 ### Firmware Architecture (from IDA Pro Analysis)
 
@@ -172,20 +178,22 @@ Standard commands processed by the PIC:
 
 Field testing reveals variable efficiency performance:
 
-| Load Level   | Reported Efficiency Range | Notes                         |
-| ------------ | ------------------------- | ----------------------------- |
-| 10% (360W)   | 30-85%                    | Wide variation between units  |
-| 25% (900W)   | 65-88%                    | Depends on PFC circuit health |
-| 50% (1800W)  | 88-92%                    | More consistent across units  |
-| 75% (2700W)  | 92-94%                    | Near optimal efficiency       |
-| 100% (3600W) | 94-95%                    | Peak efficiency               |
+| Load Level   | Reported Efficiency Range | Notes                                    |
+| ------------ | ------------------------- | ---------------------------------------- |
+| 10% (360W)   | 30-85%                    | Wide variation between units             |
+| 25% (900W)   | 65-88%                    | Depends on PFC circuit health            |
+| 33% (1200W)  | ~85-90%                   | Near-nameplate in healthy/modified units |
+| 50% (1800W)  | 88-92%                    | More consistent across units             |
+| 75% (2700W)  | 92-94%                    | Near optimal efficiency                  |
+| 100% (3600W) | 94-95%                    | Peak efficiency                          |
 
-**Efficiency Factors:**
+**Important Efficiency Notes:**
 
-- FAN7688 automatic light-load optimization (PFM mode)
-- PFC circuit condition significantly impacts low-load efficiency
-- 120V modified units show better low-load performance
-- Thermal conditions affect efficiency curves
+- **Conflicting field reports**: Some users report 30-40% efficiency at light loads, while others achieve near-nameplate efficiency at ~1200W
+- **Hardware health is critical**: Units with damaged PFC circuits show poor light-load efficiency
+- **FAN7688 automatic optimization**: When functioning correctly, provides good light-load efficiency via automatic PFM/PWM switching
+- **120V modifications**: Units modified to run at 120V (bypassing brown-out detector) demonstrate that the FAN7688 can maintain efficiency at ~1200W loads
+- **Firmware limitations**: Since the PIC can only adjust output voltage (not switching parameters), firmware modifications have limited impact on efficiency
 
 ### Connectors and Test Points
 
@@ -255,6 +263,18 @@ Field testing reveals variable efficiency performance:
 - `CLAUDE.md` - Development guidelines and detailed commands
 - `APW12 series power supply PIC programming instructions.pdf` - Official programming guide
 - `APW12 PSU User Manual.pdf` - Official user documentation
+
+## External Resources
+
+- [APW12 Repair Guide (ZeusBTC)](https://www.zeusbtc.com/manuals/Antminer-APW12-Power-Supply-Repair-Guide.asp) - Schematics and repair procedures
+- [APW9+ Repair Guide (ZeusBTC)](https://www.zeusbtc.com/manuals/Antminer-APW9-plus-power-supply-repair-guide.asp) - Similar schematic with better clarity
+
+## Contributors
+
+Special thanks to community members who have contributed technical insights:
+
+- Zack Bomsta - Control architecture analysis and efficiency observations
+- Skot - Community coordination and testing
 
 ## Dependencies
 
